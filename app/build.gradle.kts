@@ -1,48 +1,66 @@
+
 plugins {
-    alias(libs.plugins.android.application)
-    alias(libs.plugins.kotlin.android)
+    id("com.android.application")
+    kotlin("android")
+    alias(libs.plugins.compose.compiler)
 }
 
 android {
-    namespace = "com.example.notepad"
+    namespace = "com.example.yourapp"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.example.notepad"
-        minSdk = 28
-        targetSdk = 36
+        applicationId = "com.example.yourapp"
+        minSdk = 26
+        targetSdk = 34
         versionCode = 1
         versionName = "1.0"
-
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
-    buildTypes {
-        release {
-            isMinifyEnabled = false
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
-            )
-        }
+    buildFeatures {
+        compose = true // ✅ Enable Compose
+    }
+
+    composeOptions {
+        kotlinCompilerExtensionVersion = "1.5.3" // ✅ Use latest Compose Compiler version
+    }
+
+    kotlinOptions {
+        jvmTarget = "11"
+        freeCompilerArgs += listOf(
+            "-P",
+            "plugin:androidx.compose.compiler.plugins.kotlin:stabilityConfigurationPath=${project.layout.projectDirectory.file("C:/Users/berka/AndroidStudioProjects/notepad/app/src/main/java/stability_config.conf")}"
+        )
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
-    kotlinOptions {
-        jvmTarget = "11"
-    }
+}
+
+composeCompiler {
+    reportsDestination = layout.buildDirectory.dir("compose_compiler")
+    stabilityConfigurationFile = rootProject.layout.projectDirectory.file("stability_config.conf")
 }
 
 dependencies {
+    implementation(libs.androidx.ui.graphics)
+    androidTestImplementation(platform(libs.androidx.compose.bom))
+    androidTestImplementation(libs.androidx.ui.test.junit4)
+    val composeBom = platform("androidx.compose:compose-bom:2025.05.00") // ✅ Compose BOM
+    implementation(composeBom)
 
-    implementation(libs.androidx.core.ktx)
-    implementation(libs.androidx.appcompat)
-    implementation(libs.material)
-    implementation(libs.androidx.activity)
-    implementation(libs.androidx.constraintlayout)
+    // ✅ Compose core libraries
+    implementation(libs.ui)
+    implementation(libs.ui.tooling.preview)
+    implementation(libs.material3)
+
+    // Optional: for lifecycle + activity
+    implementation(libs.androidx.activity.compose.v190)
+    implementation(libs.androidx.lifecycle.runtime.ktx.v270)
+
     testImplementation(libs.junit)
-    androidTestImplementation(libs.androidx.junit)
-    androidTestImplementation(libs.androidx.espresso.core)
+
+    debugImplementation(libs.ui.tooling)
+    debugImplementation(libs.ui.test.manifest)
 }
