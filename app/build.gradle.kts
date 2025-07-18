@@ -3,6 +3,7 @@ plugins {
     id("com.android.application")
     kotlin("android")
     alias(libs.plugins.compose.compiler)
+    id("com.google.devtools.ksp") version "2.0.20-1.0.25"
 }
 
 android {
@@ -22,19 +23,19 @@ android {
     }
 
     composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.3" // ✅ Use latest Compose Compiler version
+        kotlinCompilerExtensionVersion = "1.5.13" // ✅ Use latest Compose Compiler version
     }
 
     kotlinOptions {
-        jvmTarget = "11"
+        jvmTarget = "17"
         freeCompilerArgs += listOf(
             "-P",
             "plugin:androidx.compose.compiler.plugins.kotlin:stabilityConfigurationPath=${project.layout.projectDirectory.file("C:/Users/berka/AndroidStudioProjects/notepad/app/src/main/java/stability_config.conf")}"
         )
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
 }
 
@@ -63,4 +64,35 @@ dependencies {
 
     debugImplementation(libs.ui.tooling)
     debugImplementation(libs.ui.test.manifest)
+
+    implementation(libs.androidx.room.runtime)
+    implementation(libs.dagger.compiler)
+    ksp(libs.dagger.compiler)
+    // If this project uses any Kotlin source, use Kotlin Symbol Processing (KSP)
+    // See Add the KSP plugin to your project
+    ksp(libs.room.compiler)
+
+
+        // If this project only uses Java source, use the Java annotationProcessor
+        // No additional plugins are necessary
+    annotationProcessor(libs.room.compiler)
+
+        // optional - Kotlin Extensions and Coroutines support for Room
+    implementation(libs.androidx.room.ktx)
+
+        // optional - RxJava2 support for Room
+    implementation(libs.androidx.room.rxjava2)
+
+        // optional - RxJava3 support for Room
+    implementation(libs.androidx.room.rxjava3)
+
+        // optional - Guava support for Room, including Optional and ListenableFuture
+    implementation(libs.androidx.room.guava)
+
+        // optional - Test helpers
+    testImplementation(libs.androidx.room.testing)
+
+        // optional - Paging 3 Integration
+    implementation(libs.androidx.room.paging)
 }
+
