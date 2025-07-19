@@ -22,7 +22,7 @@ interface NoteDao {
     fun getAllContents(): List<String>
 
     @Query("SELECT date FROM Note")
-    fun getAllDates(): List<Date>
+    fun getAllDates(): List<String>
 
     @Query("SELECT * FROM Note WHERE title LIKE :title")
     fun findByTitle(title: String): Note
@@ -31,7 +31,10 @@ interface NoteDao {
     fun findByContent(content: String): Note
 
     @Query("SELECT * FROM Note WHERE date LIKE :date")
-    fun findByDate(date: Date): Note
+    fun findByDate(date: String): Note
+
+    @Query("SELECT * FROM Note WHERE uid IN (:noteIds)")
+    fun loadAllByIds(noteIds: IntArray): List<Note>
 
     @Insert
     fun addNote(note: Note)
