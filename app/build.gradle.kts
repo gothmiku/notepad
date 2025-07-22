@@ -46,6 +46,8 @@ composeCompiler {
 
 dependencies {
     implementation(libs.androidx.ui.graphics)
+    implementation(libs.androidx.recyclerview)
+    implementation(libs.androidx.runtime.livedata)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.ui.test.junit4)
     val composeBom = platform("androidx.compose:compose-bom:2025.05.00") // ✅ Compose BOM
@@ -73,10 +75,6 @@ dependencies {
     ksp(libs.room.compiler)
 
 
-        // If this project only uses Java source, use the Java annotationProcessor
-        // No additional plugins are necessary
-    annotationProcessor(libs.room.compiler)
-
         // optional - Kotlin Extensions and Coroutines support for Room
     implementation(libs.androidx.room.ktx)
 
@@ -94,5 +92,8 @@ dependencies {
 
         // optional - Paging 3 Integration
     implementation(libs.androidx.room.paging)
+
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
+
 }
 
