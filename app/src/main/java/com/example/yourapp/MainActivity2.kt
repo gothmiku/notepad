@@ -7,11 +7,17 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.viewModels
+import androidx.compose.animation.Animatable
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.Spring.DampingRatioMediumBouncy
+import androidx.compose.animation.core.VectorConverter
+import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -37,15 +43,16 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.foundation.lazy.staggeredgrid.items
 import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
-import androidx.compose.foundation.rememberOverscrollEffect
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ElevatedButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -64,25 +71,28 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.room.rxjava3.createObservable
 import com.example.database.Note
-import com.example.database.NoteViewModel
+import com.example.viewmodels.GlobalViewModel
+import com.example.viewmodels.NoteViewModel
 import com.example.yourapp.ui.theme.NotepadTheme
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
-
+import kotlin.math.abs
 
 class MainActivity2 : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -90,21 +100,33 @@ class MainActivity2 : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             val myViewModel: NoteViewModel = viewModel()
+            val globalViewModel : GlobalViewModel by viewModels()
 
             NotepadTheme {
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-
+                Scaffold(modifier = Modifier.fillMaxSize()) { content ->
+                    initialCompose()
                     if (myViewModel != null) {
                         notesGrid(myViewModel)
                     } else {
                         errorNote()
                     }
-                    addButton()
+                    addButton(globalViewModel)
                 }
             }
         }
     }
 }
+
+
+
+
+@Composable
+fun initialCompose(){
+    Box(Modifier.fillMaxSize().background(color = Color.Black.copy(alpha = 0.1f)))
+    Box(Modifier.fillMaxSize().statusBarsPadding().background(color = MaterialTheme.colorScheme.background))
+
+}
+
 
 @Composable
 fun Greeting3(name: String, modifier: Modifier = Modifier) {
@@ -117,16 +139,17 @@ fun Greeting3(name: String, modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun addButton() {
-    var expanded by remember { mutableStateOf(false) }
+fun addButton(expansionBool : GlobalViewModel) {
+    val expanded = expansionBool.getBoolean()
+    Log.d("bool", "bool is ${expansionBool.globalBoolean.value}")
 
     val myViewModel: NoteViewModel = viewModel()
 
-
     val coroutineScope = rememberCoroutineScope()
-    val threshold = 125f
+    val threshold = 100f
+    val thresholdCircle = 60f
     val offsetAmp = 0.6f
-    val negativeFloat = -1.0f
+    val offsetAmpCircle = 0.11f
 
     Box(
         modifier = Modifier
@@ -135,12 +158,9 @@ fun addButton() {
             .navigationBarsPadding()
             .background(color = Color.Transparent), contentAlignment = Alignment.BottomEnd
     ) {
-        val offsetX = remember { androidx.compose.animation.core.Animatable(0f) }
-        val offsetY = remember { androidx.compose.animation.core.Animatable(0f) }
-
+        val offsetAnimatable = remember { androidx.compose.animation.core.Animatable(Offset(0f, 0f), Offset.VectorConverter) }
         LaunchedEffect(Unit) {
-            offsetX.snapTo(0f)
-            offsetY.snapTo(0f)
+            offsetAnimatable.snapTo(Offset.Zero)
         }
 
         AnimatedContent(
@@ -149,45 +169,53 @@ fun addButton() {
             transitionSpec = {
                 fadeIn(
                     animationSpec = spring(
-                        stiffness = Spring.StiffnessLow, dampingRatio = DampingRatioMediumBouncy
+                        stiffness = Spring.StiffnessLow
                     )
                 ) + scaleIn(
                     initialScale = 1.0f, transformOrigin = TransformOrigin(
-                        0.0f + (offsetX.value * offsetAmp * negativeFloat),
-                        0.0f + (offsetY.value * offsetAmp * negativeFloat)
+                        0.0f + (offsetAnimatable.value.x * offsetAmp ),
+                        0.0f + (offsetAnimatable.value.y * offsetAmp )
                     )
                 ) togetherWith fadeOut(
                     animationSpec = spring(
-                        stiffness = Spring.StiffnessLow, dampingRatio = DampingRatioMediumBouncy
+                        stiffness = Spring.StiffnessLow
                     )
-                ) + scaleOut()
+                ) + scaleOut(animationSpec = spring(stiffness =Spring.StiffnessMedium, dampingRatio = Spring.DampingRatioLowBouncy ),
+                    transformOrigin = TransformOrigin(offsetAnimatable.value.x * offsetAmp, offsetAnimatable.value.y * offsetAmp))
             },
         ) { targetExpanded ->
             run {
                 BackHandler(enabled = expanded) {
-                    expanded = false
+                    expansionBool.setBoolean(false)
+                    coroutineScope.launch { // This basicaly backs down
+                        offsetAnimatable.animateTo(
+                            Offset(0f, 0f),
+                            animationSpec = spring(
+                                stiffness = Spring.StiffnessMedium,
+                                dampingRatio = Spring.DampingRatioMediumBouncy
+                            )
+                        )
+                    }
+                    Log.d("BackHandler", "Back handler called bool is ${expansionBool.getBoolean()}")
                 }
                 if (targetExpanded) {
-
+                    Log.d("bool", "Target expanded. bool is ${expansionBool.globalBoolean.value}")
 
                     val swipeDown = Modifier
                         .offset {
-                            IntOffset(offsetX.value.toInt(), offsetY.value.toInt())
+                            IntOffset(offsetAnimatable.value.x.toInt(), offsetAnimatable.value.y.toInt())
 
                         }
                         .pointerInput(Unit) {
                             detectDragGestures(onDragEnd = {
-                                if (offsetY.value > threshold) {
+                                if (abs(offsetAnimatable.value.y) > threshold) {
                                     coroutineScope.launch {
-                                        expanded = false
-                                        offsetX.animateTo(0f, animationSpec = spring())
-                                        offsetY.animateTo(0f, animationSpec = spring())
+                                        expansionBool.setBoolean(false)
+                                        offsetAnimatable.animateTo(Offset(0f,0f),animationSpec = spring(stiffness=Spring.StiffnessMedium,dampingRatio = Spring.DampingRatioMediumBouncy))
                                     }
                                 } else {
                                     coroutineScope.launch {
-                                        offsetX.animateTo(0f, animationSpec = spring())
-                                        offsetY.animateTo(0f, animationSpec = spring())
-
+                                        offsetAnimatable.animateTo(Offset(0f,0f),animationSpec = spring(stiffness=Spring.StiffnessMedium,dampingRatio = Spring.DampingRatioMediumBouncy))
                                     }
                                 }
 
@@ -195,21 +223,49 @@ fun addButton() {
                             }, onDrag = { change, dragAmount ->
                                 change.consume()
                                 coroutineScope.launch {
-                                    if (offsetY.value > threshold || offsetY.value < -threshold) {
-                                        expanded = false
-                                        offsetX.snapTo(offsetX.value + (dragAmount.x * offsetAmp))
-                                        offsetY.snapTo(offsetY.value + (dragAmount.y * offsetAmp))
+                                    if (abs(offsetAnimatable.value.y)>threshold) {
+                                        expansionBool.setBoolean(false)
+                                        val targetOffset = Offset(offsetAnimatable.value.x + dragAmount.x*offsetAmp, offsetAnimatable.value.y + dragAmount.y*offsetAmp)
+                                        offsetAnimatable.snapTo(targetOffset)
                                     } else {
-                                        offsetX.snapTo(offsetX.value + (dragAmount.x * offsetAmp))
-                                        offsetY.snapTo(offsetY.value + (dragAmount.y * offsetAmp))
+                                        val targetOffset = Offset(offsetAnimatable.value.x + dragAmount.x*offsetAmp, offsetAnimatable.value.y + dragAmount.y*offsetAmp)
+                                        offsetAnimatable.snapTo(targetOffset)
                                     }
 
                                 }
                             })
                         }
-                    textBox(myViewModel, true, swipeDown)
+                    textBox(myViewModel, true, swipeDown, expansionBool)
                 } else {
-                    Box(modifier = Modifier.size(100.dp)) {
+                    Box(contentAlignment = Alignment.Center,modifier = Modifier.size(100.dp).offset(offsetAnimatable.value.x.toInt().dp, offsetAnimatable.value.y.toInt().dp).pointerInput(Unit){
+                        detectDragGestures(onDragEnd = {
+                            if (abs(offsetAnimatable.value.y) > thresholdCircle) {
+                                coroutineScope.launch {
+                                    expansionBool.setBoolean(true)
+                                    offsetAnimatable.animateTo(Offset(0f,0f),animationSpec = spring(stiffness=Spring.StiffnessMedium,dampingRatio = Spring.DampingRatioLowBouncy))
+                                }
+                            } else {
+                                coroutineScope.launch {
+                                    offsetAnimatable.animateTo(Offset(0f,0f),animationSpec = spring(stiffness=Spring.StiffnessMedium,dampingRatio = Spring.DampingRatioLowBouncy))
+                                }
+                            }
+
+
+                        }, onDrag = { change, dragAmount ->
+                            change.consume()
+                            coroutineScope.launch {
+                                if (offsetAnimatable.value.y > thresholdCircle) {
+                                    expansionBool.setBoolean(true)
+                                    val targetOffset = Offset(offsetAnimatable.value.x + dragAmount.x*offsetAmpCircle, offsetAnimatable.value.y + dragAmount.y*offsetAmpCircle)
+                                    offsetAnimatable.snapTo(targetOffset)
+                                } else {
+                                    val targetOffset = Offset(offsetAnimatable.value.x + dragAmount.x*offsetAmpCircle, offsetAnimatable.value.y + dragAmount.y*offsetAmpCircle)
+                                    offsetAnimatable.snapTo(targetOffset)
+                                }
+
+                            }
+                        })
+                    }) {
                         Box(
                             modifier = Modifier
                                 .size(72.dp)
@@ -217,8 +273,9 @@ fun addButton() {
                                     color = MaterialTheme.colorScheme.secondaryContainer,
                                     shape = CircleShape
                                 )
-                                .clickable { expanded = true }
-                                .clip(shape = CircleShape),
+                                .clip(shape = CircleShape)
+                                .clickable { expansionBool.setBoolean(true)
+                                           Log.d("Button", "Button clicked bool is ${expansionBool.globalBoolean.value}")},
                             contentAlignment = Alignment.Center
 
                         ) {
@@ -318,40 +375,33 @@ fun contentTextField(initialText: String) {
 @Composable
 fun notesGrid(myViewModel2: NoteViewModel?) {
     val gridState = rememberLazyStaggeredGridState()
-    var expandedNote by remember { mutableStateOf<Note?>(null)}
     val notes by myViewModel2?.allNotesObserved?.observeAsState(emptyList()) ?: mutableStateOf(
         emptyList()
     )
     LazyVerticalStaggeredGrid(
         modifier = Modifier
-            .fillMaxSize()
             .navigationBarsPadding()
             .statusBarsPadding()
-            .padding(5.dp),
-        columns = StaggeredGridCells.Fixed(2),
-        verticalItemSpacing = (5.dp),
+            .fillMaxSize(),
+        columns = StaggeredGridCells.Adaptive(minSize=150.dp),
+        verticalItemSpacing = (3.dp),
         state = gridState,
 
-        horizontalArrangement = Arrangement.spacedBy(5.dp),
+        horizontalArrangement = Arrangement.spacedBy(3.dp),
         content = {
+
             items(notes) { note ->
-                Card(modifier = Modifier.size(100.dp)) {
+                AnimatedVisibility(visible = true,enter = fadeIn() + scaleIn(), exit=fadeOut()+scaleOut()) {
                     if (note != null) {
                         previewNote(myViewModel2,note)
                     } else {
-                        Text("Loading...")
+                        errorNote()
                     }
                 }
+
             }
 
         })
-    if(expandedNote!=null){
-        Box(modifier = Modifier.fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.5f))
-            .clickable { expandedNote = null }){
-            previewNote(myViewModel2,expandedNote)
-        }
-    }
 }
 
 //val note1 = com.example.yourapp.myViewModel.addNote(Note(uid = 0, "Market alışverişleri", content = "Maydonoz \n Patates \n Elma", date = "Date"))
@@ -378,85 +428,67 @@ fun errorNote() {
 }
 
 @Composable
-fun previewNote(viewmodel: NoteViewModel?,noteParameter: Note?) {
+fun previewNote(viewmodel: NoteViewModel?, noteParameter: Note?) {
     var expanded by remember { mutableStateOf(false) }
+    val characterLimit = if (expanded) 300 else 60
 
-    Box(modifier = Modifier.background(Color.Red)){
-        AnimatedContent(label="preview2editable",
-            targetState = expanded,
-            transitionSpec = {
-                fadeIn()+ scaleIn() togetherWith fadeOut() + scaleOut()
-            }
-        ) { targetExpanded -> if(targetExpanded){
-            if(viewmodel==null){
-                textBox(null,true,Modifier)
-            }
-            else{
-                textBox(viewmodel,false,Modifier)
-            }
-        }else{
-            Box(modifier = Modifier
-                .animateContentSize()
-                .then(
-                    if(expanded){
-                        Modifier.fillMaxSize()
-                    }else{
-                        Modifier.fillMaxWidth()
-                    }
-                )) {
-
-
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(MaterialTheme.shapes.medium)
-                        .border(
-                            2.dp,
-                            MaterialTheme.colorScheme.primaryContainer,
-                            shape = MaterialTheme.shapes.medium
-                        )
-                ) {
-                    Row(modifier = Modifier.weight(3.5f)) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(color = MaterialTheme.colorScheme.primaryContainer)
-                                .padding(5.dp)
-                        ) {
-                            Text(
-                                noteParameter?.title ?: "Empty",
-                                color = MaterialTheme.colorScheme.onPrimaryContainer
-                            )
-                        }
-                    }
-                    Row(modifier = Modifier.weight(6.5f)) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(color = MaterialTheme.colorScheme.secondaryContainer)
-                                .padding(5.dp)
-                        ) {
-                            Text(
-                                noteParameter?.content ?: "Empty",
-                                color = MaterialTheme.colorScheme.onSecondaryContainer
-                            )
-                        }
-                    }
-                }
-            }
-
-        }
-
-        }
-
+    // Clamp text length to avoid index out of bounds
+    val displayText = if ((noteParameter?.content?.length ?: 0) > characterLimit) {
+        noteParameter?.content?.substring(0, characterLimit) + "..."
+    } else {
+        noteParameter?.content
     }
 
-}
+    Card(shape=MaterialTheme.shapes.large,elevation = CardDefaults.cardElevation(defaultElevation = 3.dp, hoveredElevation = 30.dp, pressedElevation = 3.dp)
+    , modifier = Modifier.padding(3.dp).animateContentSize(spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMedium)).clickable { expanded=!expanded }) {
+        Column(
+            modifier = Modifier
+                .background(Color.Red)
+                .wrapContentSize()
+                .clip(MaterialTheme.shapes.medium)
+                .border(
+                    2.dp,
+                    MaterialTheme.colorScheme.primaryContainer,
+                    shape = MaterialTheme.shapes.medium
+                ),
+            verticalArrangement = Arrangement.Top,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(color = MaterialTheme.colorScheme.primaryContainer)
+                    .padding(5.dp)
+            ) {
+                Text(
+                    noteParameter?.title ?: "Title Empty",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+            }
+            Box(
+                contentAlignment = Alignment.TopStart,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(color = MaterialTheme.colorScheme.secondaryContainer)
+                    .padding(5.dp)
+            ) {
+                Text(
+                    displayText ?: "Content Empty",
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    textAlign = TextAlign.Start,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+        }
+    }
+    }
 
 
 @Composable
-fun textBox(myViewModel3: NoteViewModel?, newNote: Boolean?, swipeDown: Modifier) {
+fun textBox(myViewModel3: NoteViewModel?, newNote: Boolean?, swipeDown: Modifier,expansionBool: GlobalViewModel) {
 
+    var expanded = expansionBool.getBoolean()
 
     val imeVisible =
         WindowInsets.ime.getBottom(LocalDensity.current) > 0 // I wanted to use WindowInsets.isImeVisible but it is
@@ -600,6 +632,7 @@ fun textBox(myViewModel3: NoteViewModel?, newNote: Boolean?, swipeDown: Modifier
                                     date = "test"
                                 )
                             )
+                            expansionBool.setBoolean(false)
                         } else if (newNote == false) {
                             myViewModel3?.updateNote(
                                 Note(
@@ -620,11 +653,12 @@ fun textBox(myViewModel3: NoteViewModel?, newNote: Boolean?, swipeDown: Modifier
             }
             if (newNote == true) {
                 ElevatedButton(
-                    onClick = { /*TODO*/ }, modifier = Modifier
+                    onClick = { expansionBool.setBoolean(false) }, modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight()
                 ) {
                     Text("Delete", fontWeight = FontWeight.ExtraBold)
+
                 }
             } else {
                 ElevatedButton(
@@ -646,6 +680,5 @@ fun textBox(myViewModel3: NoteViewModel?, newNote: Boolean?, swipeDown: Modifier
 @Composable
 fun GreetingPreview2() {
     NotepadTheme {
-        addButton()
     }
 }
