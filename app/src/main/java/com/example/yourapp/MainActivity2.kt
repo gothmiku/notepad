@@ -19,6 +19,7 @@ import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -294,6 +295,14 @@ fun addButton(expansionBool : GlobalViewModel) {
     }
 }
 
+fun linearInerpolation(input: Float, min: Float, max: Float, outMin: Float, outMax: Float) : Float{
+    if(input < min || input > max){
+        throw IllegalArgumentException("Input value must be between $min and $max")
+    }else{
+        return outMin + ((input.toFloat() - min) / (max - min)) * (outMax - outMin)
+    }
+}
+
 @Composable
 fun titleTextField(initialText: String) {
     var text by remember { mutableStateOf(initialText) }
@@ -440,7 +449,7 @@ fun previewNote(viewmodel: NoteViewModel?, noteParameter: Note?) {
     }
 
     Card(shape=MaterialTheme.shapes.large,elevation = CardDefaults.cardElevation(defaultElevation = 3.dp, hoveredElevation = 30.dp, pressedElevation = 3.dp)
-    , modifier = Modifier.padding(3.dp).animateContentSize(spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMedium)).clickable { expanded=!expanded }) {
+    , modifier = Modifier.padding(3.dp).animateContentSize(tween(durationMillis = linearInerpolation(noteParameter?.content?.length?.toFloat() ?: 1f,60f,300f,100f,500f).toInt()),spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessMedium)).clickable { expanded=!expanded }) {
         Column(
             modifier = Modifier
                 .background(Color.Red)
