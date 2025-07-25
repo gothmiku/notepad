@@ -1,9 +1,11 @@
 package com.example.yourapp
 
+import androidx.compose.ui.graphics.asComposeRenderEffect
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.content.Context
 import android.annotation.SuppressLint
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -11,6 +13,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.annotation.RequiresApi
 import androidx.compose.animation.Animatable
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -29,13 +32,17 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.hoverable
+import androidx.compose.foundation.interaction.HoverInteraction
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.PressInteraction
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -56,6 +63,7 @@ import androidx.compose.foundation.lazy.staggeredgrid.LazyVerticalStaggeredGrid
 import androidx.compose.foundation.lazy.staggeredgrid.StaggeredGridCells
 import androidx.compose.foundation.lazy.staggeredgrid.items
 import androidx.compose.foundation.lazy.staggeredgrid.rememberLazyStaggeredGridState
+import androidx.compose.foundation.rememberOverscrollEffect
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -88,6 +96,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.RenderEffect
+import androidx.compose.ui.graphics.Shader
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -112,6 +122,10 @@ import com.example.yourapp.ui.theme.NotepadTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.abs
+import com.example.shaders.animation.GradientShader
+import com.example.system.rememberScreenSizePx
+import kotlin.math.max
+
 
 class MainActivity2 : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -120,19 +134,19 @@ class MainActivity2 : ComponentActivity() {
         setContent {
             val myViewModel: NoteViewModel = viewModel()
             val globalViewModel: GlobalViewModel by viewModels()
-            val showNoteBool : ShowNoteViewModel by viewModels()
-            val selectedNoteViewModel : SelectedNoteViewModel by viewModels()
+            val showNoteBool: ShowNoteViewModel by viewModels()
+            val selectedNoteViewModel: SelectedNoteViewModel by viewModels()
 
             NotepadTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { content ->
                     initialCompose()
                     if (myViewModel != null) {
-                        notesGrid(myViewModel,showNoteBool,selectedNoteViewModel)
+                        notesGrid(myViewModel, showNoteBool, selectedNoteViewModel)
                     } else {
                         errorNote()
                     }
                     addButton(globalViewModel)
-                    showNote(myViewModel,showNoteBool,selectedNoteViewModel)
+                    showNote(myViewModel, showNoteBool, selectedNoteViewModel)
                 }
 
             }
@@ -143,16 +157,30 @@ class MainActivity2 : ComponentActivity() {
 
 @Composable
 fun initialCompose() {
+    val (width,height) = rememberScreenSizePx()
+    val colors = listOf(MaterialTheme.colorScheme.background,MaterialTheme.colorScheme.tertiaryContainer)
+    val brush = Brush.radialGradient(colors=colors, center = Offset(width/1.5f,height/4f), radius = (max(width,height)))
     Box(
         Modifier
             .fillMaxSize()
-            .background(color = Color.Black.copy(alpha = 0.1f))
+            .background(color=Color.Black.copy(alpha = 0.07f))
     )
     Box(
         Modifier
             .fillMaxSize()
             .statusBarsPadding()
-            .background(color = MaterialTheme.colorScheme.background)
+            .background(brush = brush)
+            .pointerInput(Unit){
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val position = event.changes.firstOrNull()?.position
+                        if (position != null) {
+                            Log.d("TouchLogger", "Touched at: x=${position.x}, y=${position.y}")
+                        }
+                    }
+                }
+            }
     )
 
 }
@@ -475,7 +503,11 @@ fun contentTextField(initialText: String) {
 
 @SuppressLint("UnrememberedMutableState")
 @Composable
-fun notesGrid(myViewModel2: NoteViewModel?, showNoteBool: ShowNoteViewModel?, selectedNoteViewModel: SelectedNoteViewModel) {
+fun notesGrid(
+    myViewModel2: NoteViewModel?,
+    showNoteBool: ShowNoteViewModel?,
+    selectedNoteViewModel: SelectedNoteViewModel
+) {
     val gridState = rememberLazyStaggeredGridState()
     val notes by myViewModel2?.allNotesObserved?.observeAsState(emptyList()) ?: mutableStateOf(
         emptyList()
@@ -504,7 +536,11 @@ fun notesGrid(myViewModel2: NoteViewModel?, showNoteBool: ShowNoteViewModel?, se
                     modifier = Modifier.animateItem()
                 ) {
                     if (note != null) {
-                        previewNote(myViewModel2, note, showNoteBool,onNoteClick={selectedNote=it})
+                        previewNote(
+                            myViewModel2,
+                            note,
+                            showNoteBool,
+                            onNoteClick = { selectedNote = it })
                     } else {
                         errorNote()
                     }
@@ -544,30 +580,44 @@ fun errorNote() {
 }
 
 @Composable
-fun showNote(viewmodel: NoteViewModel?, showNoteBool: ShowNoteViewModel?,selectedNoteViewModel: SelectedNoteViewModel) {
+fun showNote(
+    viewmodel: NoteViewModel?,
+    showNoteBool: ShowNoteViewModel?,
+    selectedNoteViewModel: SelectedNoteViewModel
+) {
     val blurAmount by animateDpAsState(targetValue = if (showNoteBool?.getBoolean() == true) 10.dp else 0.dp)
     BackHandler(enabled = showNoteBool?.getBoolean() ?: false) {
         showNoteBool?.setBoolean(false)
     }
-    if(showNoteBool?.getBoolean()==true){
-        Log.d("Note","showNote is ${showNoteBool.getBoolean()}")
+    if (showNoteBool?.getBoolean() == true) {
+        Log.d("Note", "showNote is ${showNoteBool.getBoolean()}")
         AnimatedVisibility(showNoteBool.getBoolean()) {
-            Box(modifier = Modifier
-                .fillMaxSize()
-                .blur(blurAmount)
-                ){
-                Text("ÇALIŞTIM")
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+
+                ) {
+
+                }
+            else{
+
             }
         }
 
-    }else{
+    } else {
 
     }
 }
 
 
 @Composable
-fun previewNote(viewmodel: NoteViewModel?, noteParameter: Note?,showNoteBool : ShowNoteViewModel?,onNoteClick : (Note?) -> Unit) {
+fun previewNote(
+    viewmodel: NoteViewModel?,
+    noteParameter: Note?,
+    showNoteBool: ShowNoteViewModel?,
+    onNoteClick: (Note?) -> Unit
+) {
     var expanded by remember { mutableStateOf(false) }
     val characterLimit = if (expanded) 300 else 60
 
@@ -577,12 +627,30 @@ fun previewNote(viewmodel: NoteViewModel?, noteParameter: Note?,showNoteBool : S
     } else {
         noteParameter?.content
     }
+    val interactionSource = remember { MutableInteractionSource() }
+    val animatable = remember {
+        androidx.compose.animation.core.Animatable(1f)
+    }
 
+    LaunchedEffect(interactionSource) {
+        interactionSource.interactions.collect { interaction ->
+            when (interaction) {
+                is HoverInteraction.Enter -> animatable.animateTo(1.1f)
+                is HoverInteraction.Exit -> animatable.animateTo(1f)
+            }
+        }
+    }
 
     Box(
         modifier = Modifier
-            .padding(7.dp)
+            .padding(5.dp)
             .background(color = Color.Transparent)
+            .hoverable(interactionSource=interactionSource)
+            .then(Modifier.graphicsLayer {
+                val scale = animatable.value
+                this.scaleX = scale
+                this.scaleY = scale
+            })
     ) {
         Card(
             elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
@@ -591,7 +659,7 @@ fun previewNote(viewmodel: NoteViewModel?, noteParameter: Note?,showNoteBool : S
                 containerColor = MaterialTheme.colorScheme.primaryContainer,
                 contentColor = MaterialTheme.colorScheme.primaryContainer,
                 disabledContentColor = Color.Transparent,
-                disabledContainerColor = Color.Transparent
+                disabledContainerColor = Color.Transparent,
             )
         ) {
             Card(
@@ -622,7 +690,6 @@ fun previewNote(viewmodel: NoteViewModel?, noteParameter: Note?,showNoteBool : S
             ) {
                 Column(
                     modifier = Modifier
-                        .background(Color.Red)
                         .wrapContentSize()
                         .clip(MaterialTheme.shapes.medium)
                         .border(
@@ -695,6 +762,8 @@ private fun Modifier.bounceClick(
             }
         }
     }
+
+
 
     Modifier
         .graphicsLayer {
