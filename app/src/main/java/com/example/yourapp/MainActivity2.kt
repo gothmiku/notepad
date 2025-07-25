@@ -1,5 +1,8 @@
 package com.example.yourapp
 
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.content.Context
 import android.annotation.SuppressLint
 import android.os.Bundle
 import android.util.Log
@@ -20,6 +23,7 @@ import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -28,6 +32,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.PressInteraction
@@ -55,6 +60,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardColors
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ElevatedButton
 import androidx.compose.material3.Icon
@@ -74,16 +80,20 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -96,7 +106,10 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.database.Note
 import com.example.viewmodels.GlobalViewModel
 import com.example.viewmodels.NoteViewModel
+import com.example.viewmodels.SelectedNoteViewModel
+import com.example.viewmodels.ShowNoteViewModel
 import com.example.yourapp.ui.theme.NotepadTheme
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 
@@ -107,17 +120,21 @@ class MainActivity2 : ComponentActivity() {
         setContent {
             val myViewModel: NoteViewModel = viewModel()
             val globalViewModel: GlobalViewModel by viewModels()
+            val showNoteBool : ShowNoteViewModel by viewModels()
+            val selectedNoteViewModel : SelectedNoteViewModel by viewModels()
 
             NotepadTheme {
                 Scaffold(modifier = Modifier.fillMaxSize()) { content ->
                     initialCompose()
                     if (myViewModel != null) {
-                        notesGrid(myViewModel)
+                        notesGrid(myViewModel,showNoteBool,selectedNoteViewModel)
                     } else {
                         errorNote()
                     }
                     addButton(globalViewModel)
+                    showNote(myViewModel,showNoteBool,selectedNoteViewModel)
                 }
+
             }
         }
     }
@@ -126,9 +143,11 @@ class MainActivity2 : ComponentActivity() {
 
 @Composable
 fun initialCompose() {
-    Box(Modifier
-        .fillMaxSize()
-        .background(color = Color.Black.copy(alpha = 0.1f)))
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(color = Color.Black.copy(alpha = 0.1f))
+    )
     Box(
         Modifier
             .fillMaxSize()
@@ -159,7 +178,7 @@ fun addButton(expansionBool: GlobalViewModel) {
     val coroutineScope = rememberCoroutineScope()
     val threshold = 100f
     val thresholdCircle = 60f
-    val offsetAmp = 0.6f
+    val offsetAmp = 0.15f
     val offsetAmpCircle = 0.11f
 
     Box(
@@ -209,8 +228,10 @@ fun addButton(expansionBool: GlobalViewModel) {
             },
         ) { targetExpanded ->
             run {
+                val haptic = LocalHapticFeedback.current
                 BackHandler(enabled = expanded) {
                     expansionBool.setBoolean(false)
+                    haptic.performHapticFeedback(HapticFeedbackType.ToggleOff)
                     coroutineScope.launch { // This basicaly backs down
                         offsetAnimatable.animateTo(
                             Offset(0f, 0f),
@@ -227,7 +248,6 @@ fun addButton(expansionBool: GlobalViewModel) {
                 }
                 if (targetExpanded) {
                     Log.d("bool", "Target expanded. bool is ${expansionBool.globalBoolean.value}")
-
                     val swipeDown = Modifier
                         .offset {
                             IntOffset(
@@ -241,6 +261,7 @@ fun addButton(expansionBool: GlobalViewModel) {
                                 if (abs(offsetAnimatable.value.y) > threshold) {
                                     coroutineScope.launch {
                                         expansionBool.setBoolean(false)
+                                        haptic.performHapticFeedback(HapticFeedbackType.GestureEnd)
                                         offsetAnimatable.animateTo(
                                             Offset(0f, 0f),
                                             animationSpec = spring(
@@ -296,13 +317,14 @@ fun addButton(expansionBool: GlobalViewModel) {
                             .pointerInput(Unit) {
                                 detectDragGestures(onDragEnd = {
                                     if (abs(offsetAnimatable.value.y) > thresholdCircle) {
+                                        haptic.performHapticFeedback(HapticFeedbackType.GestureEnd)
                                         coroutineScope.launch {
                                             expansionBool.setBoolean(true)
                                             offsetAnimatable.animateTo(
                                                 Offset(0f, 0f),
                                                 animationSpec = spring(
                                                     stiffness = Spring.StiffnessMedium,
-                                                    dampingRatio = Spring.DampingRatioLowBouncy
+                                                    dampingRatio = Spring.DampingRatioNoBouncy
                                                 )
                                             )
                                         }
@@ -312,7 +334,7 @@ fun addButton(expansionBool: GlobalViewModel) {
                                                 Offset(0f, 0f),
                                                 animationSpec = spring(
                                                     stiffness = Spring.StiffnessMedium,
-                                                    dampingRatio = Spring.DampingRatioLowBouncy
+                                                    dampingRatio = Spring.DampingRatioNoBouncy
                                                 )
                                             )
                                         }
@@ -350,6 +372,7 @@ fun addButton(expansionBool: GlobalViewModel) {
                                 .clip(shape = CircleShape)
                                 .clickable {
                                     expansionBool.setBoolean(true)
+                                    haptic.performHapticFeedback(HapticFeedbackType.Confirm)
                                     Log.d(
                                         "Button",
                                         "Button clicked bool is ${expansionBool.globalBoolean.value}"
@@ -452,11 +475,14 @@ fun contentTextField(initialText: String) {
 
 @SuppressLint("UnrememberedMutableState")
 @Composable
-fun notesGrid(myViewModel2: NoteViewModel?) {
+fun notesGrid(myViewModel2: NoteViewModel?, showNoteBool: ShowNoteViewModel?, selectedNoteViewModel: SelectedNoteViewModel) {
     val gridState = rememberLazyStaggeredGridState()
     val notes by myViewModel2?.allNotesObserved?.observeAsState(emptyList()) ?: mutableStateOf(
         emptyList()
     )
+    var selectedNote by remember { mutableStateOf<Note?>(null) }
+
+
     LazyVerticalStaggeredGrid(
         modifier = Modifier
             .background(Color.Transparent)
@@ -478,15 +504,19 @@ fun notesGrid(myViewModel2: NoteViewModel?) {
                     modifier = Modifier.animateItem()
                 ) {
                     if (note != null) {
-                        previewNote(myViewModel2, note)
+                        previewNote(myViewModel2, note, showNoteBool,onNoteClick={selectedNote=it})
                     } else {
                         errorNote()
                     }
+
+                    selectedNote?.let { selectedNoteViewModel.setNote(it) }
                 }
 
             }
 
-        })
+        }
+
+    )
 }
 
 //val note1 = com.example.yourapp.myViewModel.addNote(Note(uid = 0, "Market alışverişleri", content = "Maydonoz \n Patates \n Elma", date = "Date"))
@@ -513,10 +543,31 @@ fun errorNote() {
 
 }
 
+@Composable
+fun showNote(viewmodel: NoteViewModel?, showNoteBool: ShowNoteViewModel?,selectedNoteViewModel: SelectedNoteViewModel) {
+    val blurAmount by animateDpAsState(targetValue = if (showNoteBool?.getBoolean() == true) 10.dp else 0.dp)
+    BackHandler(enabled = showNoteBool?.getBoolean() ?: false) {
+        showNoteBool?.setBoolean(false)
+    }
+    if(showNoteBool?.getBoolean()==true){
+        Log.d("Note","showNote is ${showNoteBool.getBoolean()}")
+        AnimatedVisibility(showNoteBool.getBoolean()) {
+            Box(modifier = Modifier
+                .fillMaxSize()
+                .blur(blurAmount)
+                ){
+                Text("ÇALIŞTIM")
+            }
+        }
+
+    }else{
+
+    }
+}
 
 
 @Composable
-fun previewNote(viewmodel: NoteViewModel?, noteParameter: Note?) {
+fun previewNote(viewmodel: NoteViewModel?, noteParameter: Note?,showNoteBool : ShowNoteViewModel?,onNoteClick : (Note?) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     val characterLimit = if (expanded) 300 else 60
 
@@ -528,14 +579,28 @@ fun previewNote(viewmodel: NoteViewModel?, noteParameter: Note?) {
     }
 
 
-    Box(modifier = Modifier
-        .padding(7.dp)
-        .background(color = Color.Transparent)) {
+    Box(
+        modifier = Modifier
+            .padding(7.dp)
+            .background(color = Color.Transparent)
+    ) {
         Card(
             elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
             shape = MaterialTheme.shapes.large,
+            colors = CardColors(
+                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.primaryContainer,
+                disabledContentColor = Color.Transparent,
+                disabledContainerColor = Color.Transparent
+            )
         ) {
             Card(
+                colors = CardColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = Color.Transparent,
+                    disabledContentColor = Color.Transparent,
+                    disabledContainerColor = Color.Transparent
+                ),
                 modifier = Modifier
                     .background(color = MaterialTheme.colorScheme.secondaryContainer)
                     .animateContentSize(
@@ -544,7 +609,17 @@ fun previewNote(viewmodel: NoteViewModel?, noteParameter: Note?) {
                             stiffness = Spring.StiffnessMedium
                         )
                     )
-                    .bounceClick { expanded = !expanded }) {
+                    .bounceClick(
+                        onClick = {
+                            expanded = !expanded
+                            onNoteClick(noteParameter)
+                        },
+                        onLongClick = {
+                            showNoteBool?.setBoolean(true)
+                            onNoteClick(noteParameter)
+                        })
+
+            ) {
                 Column(
                     modifier = Modifier
                         .background(Color.Red)
@@ -592,11 +667,13 @@ fun previewNote(viewmodel: NoteViewModel?, noteParameter: Note?) {
 }
 
 private fun Modifier.bounceClick(
-    scaleDown: Float = 0.93f,
-    onClick: () -> Unit
+    scaleDown: Float = 0.94f,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
 ) = composed {
 
     val interactionSource = remember { MutableInteractionSource() }
+    val haptic = LocalHapticFeedback.current
 
     val animatable = remember {
         androidx.compose.animation.core.Animatable(1f)
@@ -606,8 +683,15 @@ private fun Modifier.bounceClick(
         interactionSource.interactions.collect { interaction ->
             when (interaction) {
                 is PressInteraction.Press -> animatable.animateTo(scaleDown)
-                is PressInteraction.Release -> animatable.animateTo(1f, animationSpec = spring(dampingRatio = DampingRatioLowBouncy))
-                is PressInteraction.Cancel -> animatable.animateTo(1f, animationSpec = spring(dampingRatio = DampingRatioLowBouncy))
+                is PressInteraction.Release -> animatable.animateTo(
+                    1f,
+                    animationSpec = spring(dampingRatio = DampingRatioLowBouncy)
+                )
+
+                is PressInteraction.Cancel -> animatable.animateTo(
+                    1f,
+                    animationSpec = spring(dampingRatio = DampingRatioLowBouncy)
+                )
             }
         }
     }
@@ -618,12 +702,20 @@ private fun Modifier.bounceClick(
             scaleX = scale
             scaleY = scale
         }
-        .clickable(
+        .combinedClickable(
             interactionSource = interactionSource,
-            indication = null
-        ) {
-            onClick()
-        }
+            indication = null,
+            onClick = {
+                haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
+                onClick()
+            },
+            onLongClick = {
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                onLongClick()
+            }
+
+
+        )
 }
 
 @Composable
@@ -669,10 +761,11 @@ fun textBox(
                 .weight(1.5f)
                 .fillMaxWidth()
                 .background(MaterialTheme.colorScheme.primaryContainer)
-                .padding(animatedTitleSpacing), contentAlignment = Alignment.CenterStart
+                .padding(animatedTitleSpacing)
         ) {
             TextField(
-                singleLine = true, colors = TextFieldDefaults.colors(
+                singleLine = true,
+                colors = TextFieldDefaults.colors(
                     focusedTextColor = MaterialTheme.colorScheme.onSecondaryContainer,
                     unfocusedTextColor = MaterialTheme.colorScheme.onSecondaryContainer,
                     focusedContainerColor = Color.Transparent,
@@ -696,13 +789,18 @@ fun textBox(
                     focusedTrailingIconColor = Color.Transparent,
                     unfocusedLeadingIconColor = Color.Transparent,
                     unfocusedTrailingIconColor = Color.Transparent,
-                ), textStyle = TextStyle(
+                ),
+                textStyle = TextStyle(
                     color = MaterialTheme.colorScheme.onPrimaryContainer,
                     fontWeight = FontWeight.ExtraBold,
                     fontSize = 15.sp
-                ), value = mTitle, onValueChange = { text ->
+                ),
+                value = mTitle,
+                onValueChange = { text ->
                     mTitle = text.replace("\n", " ")
-                }, label = { Text("Title", fontWeight = FontWeight.ExtraBold) }, modifier = Modifier.fillMaxWidth()
+                },
+                label = { Text("Title", fontWeight = FontWeight.ExtraBold) },
+                modifier = Modifier.fillMaxWidth()
             )
             //Text("Tarçın ile en iyi arkadaşları", fontStyle = MaterialTheme.typography.titleLarge.fontStyle, fontSize = MaterialTheme.typography.titleLarge.fontSize,fontWeight = FontWeight.ExtraBold , color = MaterialTheme.colorScheme.onTertiaryContainer)
 

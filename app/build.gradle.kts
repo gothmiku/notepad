@@ -30,7 +30,7 @@ android {
         jvmTarget = "17"
         freeCompilerArgs += listOf(
             "-P",
-            "plugin:androidx.compose.compiler.plugins.kotlin:stabilityConfigurationPath=${project.layout.projectDirectory.file("C:/Users/berka/AndroidStudioProjects/notepad/app/src/main/java/stability_config.conf")}"
+            "plugin:androidx.compose.compiler.plugins.kotlin:stabilityConfigurationPath=${project.layout.projectDirectory.file("C:/Users/stajyer/Desktop/gitrepo/notepad/app/src/main/java/stability_config.conf")}"
         )
     }
     compileOptions {
@@ -41,7 +41,7 @@ android {
 
 composeCompiler {
     reportsDestination = layout.buildDirectory.dir("compose_compiler")
-    stabilityConfigurationFile = rootProject.layout.projectDirectory.file("stability_config.conf")
+    stabilityConfigurationFile = rootProject.layout.projectDirectory.file("C:/Users/stajyer/Desktop/gitrepo/notepad/app/src/main/java/stability_config.conf")
 }
 
 dependencies {
