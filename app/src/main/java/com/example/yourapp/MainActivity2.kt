@@ -85,6 +85,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.simulateHotReload
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
@@ -157,20 +158,25 @@ class MainActivity2 : ComponentActivity() {
 
 @Composable
 fun initialCompose() {
-    val (width,height) = rememberScreenSizePx()
-    val colors = listOf(MaterialTheme.colorScheme.background,MaterialTheme.colorScheme.tertiaryContainer)
-    val brush = Brush.radialGradient(colors=colors, center = Offset(width/1.5f,height/4f), radius = (max(width,height)))
+    val (width, height) = rememberScreenSizePx()
+    val colors =
+        listOf(MaterialTheme.colorScheme.background, MaterialTheme.colorScheme.tertiaryContainer)
+    val brush = Brush.radialGradient(
+        colors = colors,
+        center = Offset(width / 1.5f, height / 4f),
+        radius = (max(width, height))
+    )
     Box(
         Modifier
             .fillMaxSize()
-            .background(color=Color.Black.copy(alpha = 0.07f))
+            .background(color = Color.Black.copy(alpha = 0.07f))
     )
     Box(
         Modifier
             .fillMaxSize()
             .statusBarsPadding()
             .background(brush = brush)
-            .pointerInput(Unit){
+            .pointerInput(Unit) {
                 awaitPointerEventScope {
                     while (true) {
                         val event = awaitPointerEvent()
@@ -585,28 +591,42 @@ fun showNote(
     showNoteBool: ShowNoteViewModel?,
     selectedNoteViewModel: SelectedNoteViewModel
 ) {
-    val blurAmount by animateDpAsState(targetValue = if (showNoteBool?.getBoolean() == true) 10.dp else 0.dp)
+    val blurAmount by animateDpAsState(targetValue = if (showNoteBool?.getBoolean() == true) 8.dp else 0.dp)
+    val blackAmount by animateFloatAsState(targetValue = if (showNoteBool?.getBoolean() == true) 0.1f else 0f)
+
     BackHandler(enabled = showNoteBool?.getBoolean() ?: false) {
         showNoteBool?.setBoolean(false)
     }
-    if (showNoteBool?.getBoolean() == true) {
-        Log.d("Note", "showNote is ${showNoteBool.getBoolean()}")
-        AnimatedVisibility(showNoteBool.getBoolean()) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
 
-                ) {
 
-                }
-            else{
 
-            }
+    if (showNoteBool?.getBoolean() ?: false) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(color = Color.Black.copy(alpha = blackAmount))
+
+        )
+    }
+    Log.d("Note", "showNote is ${showNoteBool?.getBoolean()}")
+    AnimatedVisibility(
+        visible = showNoteBool?.getBoolean() ?: false,
+        enter = fadeIn(animationSpec = tween(300)) + scaleIn(initialScale = 0.8f, animationSpec = spring(dampingRatio = DampingRatioMediumBouncy)),
+        exit = fadeOut(animationSpec = tween(300)) + scaleOut(targetScale = 0.9f)
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxSize()
+                .navigationBarsPadding()
+                .statusBarsPadding()
+                .padding(7.dp), colors = CardColors(
+                contentColor = Color.White,
+                disabledContentColor = Color.Gray,
+                containerColor = Color.White,
+                disabledContainerColor = Color.Gray
+            ), elevation = CardDefaults.cardElevation(blurAmount)
+        ) {
         }
-
-    } else {
-
     }
 }
 
@@ -645,7 +665,7 @@ fun previewNote(
         modifier = Modifier
             .padding(5.dp)
             .background(color = Color.Transparent)
-            .hoverable(interactionSource=interactionSource)
+            .hoverable(interactionSource = interactionSource)
             .then(Modifier.graphicsLayer {
                 val scale = animatable.value
                 this.scaleX = scale
