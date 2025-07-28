@@ -11,6 +11,7 @@ import android.annotation.SuppressLint
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -27,16 +28,22 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.Spring.DampingRatioLowBouncy
 import androidx.compose.animation.core.Spring.DampingRatioMediumBouncy
 import androidx.compose.animation.core.Spring.StiffnessHigh
+import androidx.compose.animation.core.Spring.StiffnessLow
+import androidx.compose.animation.core.Spring.StiffnessMedium
+import androidx.compose.animation.core.Spring.StiffnessVeryLow
 import androidx.compose.animation.core.VectorConverter
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -99,6 +106,7 @@ import androidx.compose.runtime.simulateHotReload
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
@@ -121,6 +129,7 @@ import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.TextStyle
@@ -619,6 +628,8 @@ fun showNote(
     var mTitle by remember { mutableStateOf("") }
     var mContent by remember { mutableStateOf("") }
 
+    var offsetTable by remember { mutableStateOf(Offset.Zero)}
+
 
     val buttonAnimation by animateDpAsState(targetValue = if (!imeActive.value ?: false) 75.dp else 0.dp)
 
@@ -637,12 +648,24 @@ fun showNote(
     val blurAmount by animateDpAsState(targetValue = if (showNoteBool?.getBoolean() == true) 10.dp else 0.dp)
     val blackAmount by animateFloatAsState(targetValue = if (showNoteBool?.getBoolean() == true) 0.2f else 0f)
 
-
     BackHandler(enabled = showNoteBool?.getBoolean() ?: false) {
         showNoteBool?.setBoolean(false)
     }
 
+    val threshold = 300f
+    val offsetAmp = 0.5f
+    val density = LocalDensity.current
+    var offsetAnimatable = remember {
+        androidx.compose.animation.core.Animatable(
+            Offset(0f, 0f),
+            Offset.VectorConverter
+        )
+    }
+    val alpha = (threshold + 50f) / offsetAnimatable.value.y * 0.7f
 
+    LaunchedEffect(showNoteBool?.getBoolean()) {
+        offsetAnimatable.snapTo(Offset.Zero)
+    }
 
     if (showNoteBool?.getBoolean() ?: false) {
         Box(
@@ -655,19 +678,23 @@ fun showNote(
     Log.d("Note", "showNote is ${showNoteBool?.getBoolean()}")
     AnimatedVisibility(
         visible = showNoteBool?.getBoolean() ?: false,
-        enter = fadeIn(animationSpec = tween(300)) + scaleIn(initialScale = 0.8f, animationSpec = spring(dampingRatio = DampingRatioLowBouncy)),
-        exit = fadeOut(animationSpec = tween(250)) + scaleOut(targetScale = 1.1f, animationSpec = spring(stiffness = StiffnessHigh))
+        enter = fadeIn(animationSpec = tween(300)) + slideInVertically(animationSpec = spring(dampingRatio = DampingRatioLowBouncy)) { with(density) { 100.dp.roundToPx() } } +  expandVertically(expandFrom = Alignment.Top),
+        exit = fadeOut(animationSpec = tween(300)) + slideOutVertically(animationSpec = spring(stiffness = StiffnessMedium)) {with(density){-400.dp.roundToPx()}  }
     ) {
         Card(
             modifier = Modifier
+                .offset { IntOffset(0,offsetAnimatable.value.y.toInt()) }
                 .fillMaxSize()
+                .alpha(alpha)
                 .navigationBarsPadding()
                 .statusBarsPadding()
                 .imePadding()
                 .padding(15.dp)
-                .border(3.dp,
+                .border(
+                    3.dp,
                     MaterialTheme.colorScheme.primaryContainer,
-                    shape = MaterialTheme.shapes.extraLarge), colors = CardColors(
+                    shape = MaterialTheme.shapes.extraLarge
+                ), colors = CardColors(
                 contentColor = Color.Transparent,
                 disabledContentColor = Color.Gray,
                 containerColor = Color.Transparent,
@@ -676,8 +703,52 @@ fun showNote(
             , shape = MaterialTheme.shapes.extraLarge
 
         ) {
+
             Column(){
-                Row(modifier = Modifier.fillMaxWidth().heightIn(min=75.dp,max=125.dp).background(MaterialTheme.colorScheme.primaryContainer).padding(10.dp)){
+
+                val coroutineScope = rememberCoroutineScope()
+                Row(modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 75.dp, max = 125.dp)
+                    .background(MaterialTheme.colorScheme.primaryContainer)
+                    .padding(10.dp)
+                    .pointerInput(Unit) {
+                        detectDragGestures(onDragEnd = {
+                            if(offsetAnimatable.value.y > threshold){
+                                coroutineScope.launch{
+                                    offsetAnimatable.animateTo(targetValue = Offset(0f,0f))
+                                }
+                                showNoteBool?.setBoolean(false)
+
+                            }
+                            else{
+                                coroutineScope.launch {
+                                    offsetAnimatable.animateTo(Offset.Zero)
+                                }
+                            }
+                        }
+                            , onDrag = {
+                                change, dragAmount ->
+                            change.consume()
+                            coroutineScope.launch {
+                                if(offsetAnimatable.value.y < threshold) {
+                                    val targetOffset = Offset(
+                                        offsetAnimatable.value.x + dragAmount.x * offsetAmp,
+                                        offsetAnimatable.value.y + dragAmount.y * offsetAmp
+                                    )
+                                    offsetAnimatable.snapTo(targetOffset)
+                                }
+                                else{
+                                    val targetOffset = Offset(
+                                        offsetAnimatable.value.x + dragAmount.x * offsetAmp * 0.15f,
+                                        offsetAnimatable.value.y + dragAmount.y * offsetAmp * 0.15f
+                                    )
+                                    offsetAnimatable.snapTo(targetOffset)
+                                }
+                        }
+
+                            })
+                    }){
                     TextField(
                         singleLine = true,
                         colors = TextFieldDefaults.colors(
@@ -714,7 +785,10 @@ fun showNote(
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
-                Row(modifier = Modifier.fillMaxSize().weight(1f).background(MaterialTheme.colorScheme.background)){
+                Row(modifier = Modifier
+                    .fillMaxSize()
+                    .weight(1f)
+                    .background(MaterialTheme.colorScheme.background)){
                     TextField(
                         colors = TextFieldDefaults.colors(
                             focusedTextColor = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -746,20 +820,29 @@ fun showNote(
                         }, modifier = Modifier.fillMaxSize()
                     )
                 }
-                Row(modifier=Modifier.fillMaxWidth().height(buttonAnimation).background(MaterialTheme.colorScheme.secondaryContainer).padding(5.dp)
+                Row(modifier=Modifier
+                    .fillMaxWidth()
+                    .height(buttonAnimation)
+                    .background(MaterialTheme.colorScheme.secondaryContainer)
+                    .padding(5.dp)
                     , horizontalArrangement = Arrangement.SpaceEvenly
                     , verticalAlignment = Alignment.CenterVertically){
                     Column(modifier=Modifier.weight(1f)){
-                        ElevatedButton(modifier = Modifier.fillMaxSize().padding(2.dp)
+                        ElevatedButton(modifier = Modifier
+                            .fillMaxSize()
+                            .padding(2.dp)
                             , enabled = (mTitle != selectedNoteViewModel.getNote().title || mContent != selectedNoteViewModel.getNote().content)
                             ,onClick = {
-                                viewmodel?.updateNote(selectedNoteViewModel.getNote())
+                                val updatedNote = selectedNoteViewModel.getNote().copy(title=mTitle, content = mContent)
+                                viewmodel?.updateNote(updatedNote)
                                 showNoteBool?.setBoolean(false)
                         }) { Text("Update", fontWeight = FontWeight.ExtraBold)
                         }
                     }
                     Column(modifier=Modifier.weight(1f)){
-                        ElevatedButton(modifier = Modifier.fillMaxSize().padding(2.dp),onClick = {
+                        ElevatedButton(modifier = Modifier
+                            .fillMaxSize()
+                            .padding(2.dp),onClick = {
                             viewmodel?.delete(selectedNoteViewModel.getNote())
                             showNoteBool?.setBoolean(false)
                         }) { Text("Delete", fontWeight = FontWeight.ExtraBold)
@@ -831,12 +914,12 @@ fun previewNote(
             Card(
                 colors = CardColors(
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    contentColor = Color.Transparent,
+                    contentColor = MaterialTheme.colorScheme.primaryContainer,
                     disabledContentColor = Color.Transparent,
                     disabledContainerColor = Color.Transparent
                 ),
                 modifier = Modifier
-                    .background(color = MaterialTheme.colorScheme.secondaryContainer)
+                    .background(color = MaterialTheme.colorScheme.primaryContainer)
                     .animateContentSize(
                         spring(
                             dampingRatio = Spring.DampingRatioLowBouncy,
@@ -960,6 +1043,8 @@ fun textBox(
     swipeDown: Modifier,
     expansionBool: GlobalViewModel
 ) {
+
+    val context = LocalContext.current
 
 
     val imeVisible =
@@ -1110,16 +1195,9 @@ fun textBox(
                                 )
                             )
                             expansionBool.setBoolean(false)
-                        } else if (newNote == false) {
-                            myViewModel3?.updateNote(
-                                Note(
-                                    title = mTitle,
-                                    content = mContent,
-                                    date = "test"
-                                )
-                            )
                         } else {
                             Log.d("Empty", "New note is null")
+                            Toast.makeText(context, "Title nor content cannot be empty", Toast.LENGTH_LONG).show()
                         }
                     }
                 }, modifier = Modifier
@@ -1130,12 +1208,5 @@ fun textBox(
             }
 
         }
-    }
-}
-
-@Preview(showBackground = true)
-@Composable
-fun GreetingPreview2() {
-    NotepadTheme {
     }
 }
