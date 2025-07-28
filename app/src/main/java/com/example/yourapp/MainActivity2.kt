@@ -1,5 +1,8 @@
 package com.example.yourapp
 
+
+import androidx.compose.runtime.State
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import android.os.VibrationEffect
 import android.os.Vibrator
@@ -14,13 +17,16 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.annotation.RequiresApi
+import androidx.collection.mutableIntIntMapOf
 import androidx.compose.animation.Animatable
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Easing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.Spring.DampingRatioLowBouncy
 import androidx.compose.animation.core.Spring.DampingRatioMediumBouncy
+import androidx.compose.animation.core.Spring.StiffnessHigh
 import androidx.compose.animation.core.VectorConverter
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateDpAsState
@@ -37,6 +43,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.HoverInteraction
@@ -51,6 +58,8 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -84,6 +93,7 @@ import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.simulateHotReload
 import androidx.compose.ui.Alignment
@@ -91,15 +101,23 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.ClipOp
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.DefaultShadowColor
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.RenderEffect
 import androidx.compose.ui.graphics.Shader
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.addOutline
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
@@ -109,7 +127,9 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.substring
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -125,6 +145,8 @@ import kotlinx.coroutines.launch
 import kotlin.math.abs
 import com.example.shaders.animation.GradientShader
 import com.example.system.rememberScreenSizePx
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.coroutineScope
 import kotlin.math.max
 
 
@@ -591,8 +613,30 @@ fun showNote(
     showNoteBool: ShowNoteViewModel?,
     selectedNoteViewModel: SelectedNoteViewModel
 ) {
-    val blurAmount by animateDpAsState(targetValue = if (showNoteBool?.getBoolean() == true) 8.dp else 0.dp)
-    val blackAmount by animateFloatAsState(targetValue = if (showNoteBool?.getBoolean() == true) 0.1f else 0f)
+
+    var imeActive = rememberImeVisibility()
+
+    var mTitle by remember { mutableStateOf("") }
+    var mContent by remember { mutableStateOf("") }
+
+
+    val buttonAnimation by animateDpAsState(targetValue = if (!imeActive.value ?: false) 75.dp else 0.dp)
+
+    Log.d("Update","I work bro")
+
+    LaunchedEffect(selectedNoteViewModel.getNote()) {
+        Log.d("Update","Launched Effect start")
+        mTitle = selectedNoteViewModel.getNote().title ?: ""
+        Log.d("Update", "Title set as ${mTitle}")
+        mContent = selectedNoteViewModel.getNote().content ?: ""
+        Log.d("Update", "Content set as ${mContent}")
+    }
+
+
+
+    val blurAmount by animateDpAsState(targetValue = if (showNoteBool?.getBoolean() == true) 10.dp else 0.dp)
+    val blackAmount by animateFloatAsState(targetValue = if (showNoteBool?.getBoolean() == true) 0.2f else 0f)
+
 
     BackHandler(enabled = showNoteBool?.getBoolean() ?: false) {
         showNoteBool?.setBoolean(false)
@@ -603,33 +647,135 @@ fun showNote(
     if (showNoteBool?.getBoolean() ?: false) {
         Box(
             modifier = Modifier
+                .blur(30.dp)
                 .fillMaxSize()
                 .background(color = Color.Black.copy(alpha = blackAmount))
-
         )
     }
     Log.d("Note", "showNote is ${showNoteBool?.getBoolean()}")
     AnimatedVisibility(
         visible = showNoteBool?.getBoolean() ?: false,
-        enter = fadeIn(animationSpec = tween(300)) + scaleIn(initialScale = 0.8f, animationSpec = spring(dampingRatio = DampingRatioMediumBouncy)),
-        exit = fadeOut(animationSpec = tween(300)) + scaleOut(targetScale = 0.9f)
+        enter = fadeIn(animationSpec = tween(300)) + scaleIn(initialScale = 0.8f, animationSpec = spring(dampingRatio = DampingRatioLowBouncy)),
+        exit = fadeOut(animationSpec = tween(250)) + scaleOut(targetScale = 1.1f, animationSpec = spring(stiffness = StiffnessHigh))
     ) {
         Card(
             modifier = Modifier
                 .fillMaxSize()
                 .navigationBarsPadding()
                 .statusBarsPadding()
-                .padding(7.dp), colors = CardColors(
-                contentColor = Color.White,
+                .imePadding()
+                .padding(15.dp)
+                .border(3.dp,
+                    MaterialTheme.colorScheme.primaryContainer,
+                    shape = MaterialTheme.shapes.extraLarge), colors = CardColors(
+                contentColor = Color.Transparent,
                 disabledContentColor = Color.Gray,
-                containerColor = Color.White,
+                containerColor = Color.Transparent,
                 disabledContainerColor = Color.Gray
-            ), elevation = CardDefaults.cardElevation(blurAmount)
+            ), elevation = CardDefaults.cardElevation(if(showNoteBool?.getBoolean()?:false) blurAmount else 0.dp)
+            , shape = MaterialTheme.shapes.extraLarge
+
         ) {
+            Column(){
+                Row(modifier = Modifier.fillMaxWidth().heightIn(min=75.dp,max=125.dp).background(MaterialTheme.colorScheme.primaryContainer).padding(10.dp)){
+                    TextField(
+                        singleLine = true,
+                        colors = TextFieldDefaults.colors(
+                            focusedTextColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                            unfocusedTextColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent,
+                            focusedIndicatorColor = Color.Transparent,
+                            unfocusedIndicatorColor = Color.Transparent,
+                            disabledIndicatorColor = Color.Transparent,
+                            errorIndicatorColor = Color.Transparent,
+                            errorContainerColor = Color.Transparent,
+                            cursorColor = Color.Transparent,
+                            disabledContainerColor = Color.Transparent,
+                            disabledTextColor = Color.Transparent,
+                            disabledPlaceholderColor = Color.Transparent,
+                            disabledLeadingIconColor = Color.Transparent,
+                            disabledTrailingIconColor = Color.Transparent,
+                            errorCursorColor = Color.Transparent,
+                            errorLeadingIconColor = Color.Transparent,
+                            errorTrailingIconColor = Color.Transparent,
+                            errorPlaceholderColor = Color.Transparent,
+                            focusedLeadingIconColor = Color.Transparent,
+                            focusedTrailingIconColor = Color.Transparent,
+                            unfocusedLeadingIconColor = Color.Transparent,
+                            unfocusedTrailingIconColor = Color.Transparent,
+                        ),
+                        textStyle = MaterialTheme.typography.titleLarge,
+                        value = mTitle,
+                        onValueChange = { text ->
+                            mTitle = text.replace("\n", " ")
+                        },
+                        label = { Text("Title") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+                Row(modifier = Modifier.fillMaxSize().weight(1f).background(MaterialTheme.colorScheme.background)){
+                    TextField(
+                        colors = TextFieldDefaults.colors(
+                            focusedTextColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                            unfocusedTextColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent,
+                            focusedIndicatorColor = Color.Transparent,
+                            unfocusedIndicatorColor = Color.Transparent,
+                            disabledIndicatorColor = Color.Transparent,
+                            errorIndicatorColor = Color.Transparent,
+                            errorContainerColor = Color.Transparent,
+                            cursorColor = Color.Transparent,
+                            disabledContainerColor = Color.Transparent,
+                            disabledTextColor = Color.Transparent,
+                            disabledPlaceholderColor = Color.Transparent,
+                            disabledLeadingIconColor = Color.Transparent,
+                            disabledTrailingIconColor = Color.Transparent,
+                            errorCursorColor = Color.Transparent,
+                            errorLeadingIconColor = Color.Transparent,
+                            errorTrailingIconColor = Color.Transparent,
+                            errorPlaceholderColor = Color.Transparent,
+                            focusedLeadingIconColor = Color.Transparent,
+                            focusedTrailingIconColor = Color.Transparent,
+                            unfocusedLeadingIconColor = Color.Transparent,
+                            unfocusedTrailingIconColor = Color.Transparent,
+                        ), textStyle = MaterialTheme.typography.bodyMedium
+                        , value = mContent, onValueChange = { newText ->
+                            mContent = newText
+                        }, modifier = Modifier.fillMaxSize()
+                    )
+                }
+                Row(modifier=Modifier.fillMaxWidth().height(buttonAnimation).background(MaterialTheme.colorScheme.secondaryContainer).padding(5.dp)
+                    , horizontalArrangement = Arrangement.SpaceEvenly
+                    , verticalAlignment = Alignment.CenterVertically){
+                    Column(modifier=Modifier.weight(1f)){
+                        ElevatedButton(modifier = Modifier.fillMaxSize().padding(2.dp)
+                            , enabled = (mTitle != selectedNoteViewModel.getNote().title || mContent != selectedNoteViewModel.getNote().content)
+                            ,onClick = {
+                                viewmodel?.updateNote(selectedNoteViewModel.getNote())
+                                showNoteBool?.setBoolean(false)
+                        }) { Text("Update", fontWeight = FontWeight.ExtraBold)
+                        }
+                    }
+                    Column(modifier=Modifier.weight(1f)){
+                        ElevatedButton(modifier = Modifier.fillMaxSize().padding(2.dp),onClick = {
+                            viewmodel?.delete(selectedNoteViewModel.getNote())
+                            showNoteBool?.setBoolean(false)
+                        }) { Text("Delete", fontWeight = FontWeight.ExtraBold)
+                        }
+                    }
+                }
+            }
         }
     }
 }
 
+@Composable
+fun rememberImeVisibility(): State<Boolean> {
+    val imeBottom = WindowInsets.ime.getBottom(LocalDensity.current)
+    return rememberUpdatedState(imeBottom > 0)
+}
 
 @Composable
 fun previewNote(
@@ -981,26 +1127,6 @@ fun textBox(
                     .fillMaxHeight()
             ) {
                 Text("Save", fontWeight = FontWeight.ExtraBold)
-            }
-            if (newNote == true) {
-                ElevatedButton(
-                    onClick = { expansionBool.setBoolean(false) }, modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                ) {
-                    Text("Delete", fontWeight = FontWeight.ExtraBold)
-
-                }
-            } else {
-                ElevatedButton(
-                    onClick = { /*TODO*/ },
-                    enabled = false,
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                ) {
-                    Text("Delete", fontWeight = FontWeight.ExtraBold)
-                }
             }
 
         }

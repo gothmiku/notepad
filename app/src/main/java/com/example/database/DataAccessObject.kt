@@ -49,8 +49,8 @@ interface NoteDao {
     @Query("DELETE FROM Note")
     fun deleteAll()
 
-    @Update
-    suspend fun updateNote(note: Note)
+    @Update(entity = Note::class)
+    fun updateNote(note: Note)
 
     //@Query("UPDATE sqlite_sequence SET seq = (SELECT MAX(uid) FROM Note) WHERE name='Note'")
     //suspend fun resetSequence()
