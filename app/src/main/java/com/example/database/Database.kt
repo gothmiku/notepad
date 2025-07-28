@@ -23,7 +23,6 @@ abstract class AppDatabase : RoomDatabase() {
                     val noteDao = database.noteDao()
                     noteDao.deleteAll()
                     val note = Note(uid=0, title = "Test", content= "You have an entry", date= "Date")
-                    noteDao.addNote(note)
                 }
             }
         }
